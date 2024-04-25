@@ -5,7 +5,7 @@ import requests
 def baixarOrdem(idOrdem, cpfCliente, contaCliente, nomeCliente, officer, headers, nomeOrdem, dataStr):
     url = f'https://access.btgpactualdigital.com/op/api/history/clients/{cpfCliente}/accounts/{contaCliente}/report-requests/download/{idOrdem}'
 
-    diretorio = 'C:\\Users\\felipe.batista\\Desktop\\Ordens Baixadas BTG'
+    diretorio = 'Z:\\MESA - ADVISORY - IC\\09_ORDENS BAIXADAS BTG'
 
     response = requests.get(url, headers=headers)
     

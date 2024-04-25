@@ -2,7 +2,7 @@ import locale
 import pandas as pd
 import requests
 import time
-from datetime import datetime
+from datetime import datetime , date
 from downloadOrdens import baixarOrdem
 
 # Baixou 79 arquivos em 4m15s
@@ -11,10 +11,12 @@ def listarOrdens(cliente, tokenJWT):
 
     locale.setlocale(locale.LC_TIME, 'pt_BR.UTF-8')
 
+    dataAtual = date.today()
+
     contaCliente = cliente['conta']
 
     cpfCliente = cliente['cpf']
-    cpfCliente = cpfCliente.replace('.', '').replace('-', '')
+    cpfCliente = cpfCliente.replace('.', '').replace('‐', '').replace('-', '').replace('/', '')
 
     nomeCliente = cliente['nome']
 
@@ -37,8 +39,8 @@ def listarOrdens(cliente, tokenJWT):
     payload = {
         "dateRange":
         {
-        "startDate": "2019-04-01T00:00:00.000Z",
-        "endDate": "2024-03-29T00:00:00.000Z"
+        "startDate": "2022-01-01T00:00:00.000Z",
+        "endDate": "2022-12-31T00:00:00.000Z"
         },
         "reportTypes": [
             "RF_REPORT",
@@ -134,6 +136,7 @@ def listarOrdens(cliente, tokenJWT):
             time.sleep(5) 
     else:
         if response.status_code == 404:
+            print('----------------')
             print(f'Não foram encontrados notas de corretagem para o cliente {nomeCliente} - {contaCliente}')
 
             clientesSemNota = pd.read_excel('Clientes Sem Nota.xlsx', dtype={'CONTA': str})
@@ -150,4 +153,21 @@ def listarOrdens(cliente, tokenJWT):
             
             clientesSemNota.to_excel('Clientes Sem Nota.xlsx', index=False)
         else:
-            print(response)
+            print('----------------')
+            print(f'Ocorreu um erro ao solicitar as notas do {nomeCliente} - {contaCliente} - Response: {response}')
+
+            logErros = pd.read_excel('logErros.xlsx', dtype={'CONTA': str})
+
+            numLinLogErros = logErros.shape[0]
+    
+            if numLinLogErros > 0:
+                linLogErros = numLinLogErros + 1
+            else:
+                linLogErros = 1
+
+            logErros.loc[linLogErros, "CLIENTE"] = nomeCliente
+            logErros.loc[linLogErros, "CONTA"] = contaCliente
+            logErros.loc[linLogErros, "ERRO"] = response.status_code
+            logErros.loc[linLogErros, "HORA"] = dataAtual
+
+            logErros.to_excel('logErros.xlsx', index=False)
