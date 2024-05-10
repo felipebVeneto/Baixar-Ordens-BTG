@@ -7,19 +7,16 @@ from downloadOrdens import baixarOrdem
 
 # Baixou 79 arquivos em 4m15s
 
-def listarOrdens(cliente, tokenJWT):
+def listarOrdens(cliente, tokenJWT, dataInicio):
 
     locale.setlocale(locale.LC_TIME, 'pt_BR.UTF-8')
 
     dataAtual = date.today()
-
+    dataFormatada = dataAtual.strftime('%Y-%m-%d')
     contaCliente = cliente['conta']
-
     cpfCliente = cliente['cpf']
     cpfCliente = cpfCliente.replace('.', '').replace('‐', '').replace('-', '').replace('/', '')
-
     nomeCliente = cliente['nome']
-
     officer = cliente['officer']
 
     url = f'https://access.btgpactualdigital.com/op/api/history/accounts/{contaCliente}/reports'
@@ -39,8 +36,8 @@ def listarOrdens(cliente, tokenJWT):
     payload = {
         "dateRange":
         {
-        "startDate": "2022-01-01T00:00:00.000Z",
-        "endDate": "2022-12-31T00:00:00.000Z"
+        "startDate": f"{dataInicio}T00:00:00.000Z",
+        "endDate": f"{dataAtual}T00:00:00.000Z"
         },
         "reportTypes": [
             "RF_REPORT",
@@ -66,7 +63,39 @@ def listarOrdens(cliente, tokenJWT):
 
         numOrdens = len(ordens)
 
-        clientesRodados = pd.read_excel('Clientes Rodados.xlsx', dtype={'CONTA': str})
+        # Atualiza a base de clientes Baixados
+        clientesBaixados = pd.read_excel('Bases/Clientes Baixados.xlsx', dtype={'CONTA': str})
+        numLinhas = clientesBaixados.shape[0]
+
+        if numLinhas > 0:
+            lin = numLinhas + 1
+        else:
+            lin = 1
+
+        clienteExiste = clientesBaixados.loc[clientesBaixados['CONTA'] == contaCliente]
+        
+        
+        if clienteExiste.empty:
+            clientesBaixados.loc[lin, "CLIENTE"] = nomeCliente
+            clientesBaixados.loc[lin, "CONTA"] = contaCliente
+            clientesBaixados.loc[lin, "NOTAS TOTAIS"] = numOrdens
+            clientesBaixados.loc[lin, "NOTAS BAIXADAS"] = 0
+            notasBaixadasAtuais = 0
+        else:
+            linhaConta = clienteExiste.index[0]
+            
+            if dataAtual != dataInicio:
+                numOrdensAtual = clientesBaixados.loc[linhaConta, "NOTAS TOTAIS"]
+                numOrdens = numOrdensAtual + numOrdens
+                clientesBaixados.loc[linhaConta, "NOTAS TOTAIS"] = numOrdens
+
+            notasBaixadasAtuais = clientesBaixados.loc[linhaConta, "NOTAS BAIXADAS"]
+        
+        clientesBaixados.to_excel('Bases/Clientes Baixados.xlsx', index=False)
+
+        # Atualiza a base de Clientes Rodados
+        clientesRodados = pd.read_excel('Bases/Clientes Rodados.xlsx', dtype={'CONTA': str})
+
         numLinhas = clientesRodados.shape[0]
 
         if numLinhas > 0:
@@ -75,18 +104,23 @@ def listarOrdens(cliente, tokenJWT):
             lin = 1
 
         clienteExiste = clientesRodados.loc[clientesRodados['CONTA'] == contaCliente]
-        
-        if clienteExiste.empty:
-            clientesRodados.loc[lin, "CLIENTE"] = nomeCliente
-            clientesRodados.loc[lin, "CONTA"] = contaCliente
-            clientesRodados.loc[lin, "NOTAS TOTAIS"] = numOrdens
-            clientesRodados.loc[lin, "NOTAS BAIXADAS"] = 0
-        
-        clientesRodados.to_excel('Clientes Rodados.xlsx', index=False)
 
+        if clienteExiste.empty:
+            clientesRodados.loc[lin, "NOME"] = nomeCliente
+            clientesRodados.loc[lin, "CONTA"] = contaCliente
+            clientesRodados.loc[lin, "STATUS"] = 'RODADO'
+            clientesRodados.loc[lin, "ULT. ATUALIZAÇÃO"] = dataAtual
+        else:
+            linhaConta = clienteExiste.index[0]
+            clientesRodados.loc[linhaConta, "STATUS"] = 'RODADO'
+            clientesRodados.loc[linhaConta, "ULT. ATUALIZAÇÃO"] = dataAtual
+
+        clientesRodados.to_excel('Bases/Clientes Rodados.xlsx', index=False)
+
+           
         notasBaixadasCliente = 0
 
-        logDownloads = pd.read_excel('logDownloads.xlsx', dtype={'CONTA': str})
+        logDownloads = pd.read_excel('Bases/logDownloads.xlsx', dtype={'CONTA': str})
 
         numLinhasLog = logDownloads.shape[0]
  
@@ -120,18 +154,18 @@ def listarOrdens(cliente, tokenJWT):
             else:
                 logDownloads.loc[linLog, "LOG"] = log
 
-            logDownloads.to_excel('logDownloads.xlsx', index=False)
+            logDownloads.to_excel(f'Bases/logDownloads - {dataAtual}.xlsx', index=False)
 
             linLog +=1
             
-            clientesRodados = pd.read_excel('Clientes Rodados.xlsx', dtype={'CONTA': str})
+            clientesBaixados = pd.read_excel('Bases/Clientes Baixados.xlsx', dtype={'CONTA': str})
 
-            linhaConta = clientesRodados.loc[clientesRodados['CONTA'] == contaCliente]
+            linhaConta = clientesBaixados.loc[clientesBaixados['CONTA'] == contaCliente]
             linhaConta = linhaConta.index[0]
 
-            clientesRodados.loc[linhaConta, "NOTAS BAIXADAS"] = notasBaixadasCliente
-                
-            clientesRodados.to_excel('Clientes Rodados.xlsx', index=False)
+            clientesBaixados.loc[linhaConta, "NOTAS BAIXADAS"] = notasBaixadasAtuais + notasBaixadasCliente
+            
+            clientesBaixados.to_excel('Bases/Clientes Baixados.xlsx', index=False)
 
             time.sleep(5) 
     else:
@@ -139,7 +173,7 @@ def listarOrdens(cliente, tokenJWT):
             print('----------------')
             print(f'Não foram encontrados notas de corretagem para o cliente {nomeCliente} - {contaCliente}')
 
-            clientesSemNota = pd.read_excel('Clientes Sem Nota.xlsx', dtype={'CONTA': str})
+            clientesSemNota = pd.read_excel('Bases/Clientes Sem Nota.xlsx', dtype={'CONTA': str})
 
             numLinSemNota = clientesSemNota.shape[0]
     
@@ -151,12 +185,36 @@ def listarOrdens(cliente, tokenJWT):
             clientesSemNota.loc[linSemNota, "CLIENTE"] = nomeCliente
             clientesSemNota.loc[linSemNota, "CONTA"] = contaCliente
             
-            clientesSemNota.to_excel('Clientes Sem Nota.xlsx', index=False)
+            clientesSemNota.to_excel('Bases/Clientes Sem Nota.xlsx', index=False)
+
+            # Atualiza a base de Clientes Rodados
+            clientesRodados = pd.read_excel('Bases/Clientes Rodados.xlsx', dtype={'CONTA': str})
+
+            numLinhas = clientesRodados.shape[0]
+
+            if numLinhas > 0:
+                lin = numLinhas + 1
+            else:
+                lin = 1
+
+            clienteExiste = clientesRodados.loc[clientesRodados['CONTA'] == contaCliente]
+
+            if clienteExiste.empty:
+                clientesRodados.loc[lin, "NOME"] = nomeCliente
+                clientesRodados.loc[lin, "CONTA"] = contaCliente
+                clientesRodados.loc[lin, "STATUS"] = 'SEM NOTA'
+                clientesRodados.loc[lin, "ULT. ATUALIZAÇÃO"] = dataAtual
+            else:
+                linhaConta = clienteExiste.index[0]
+                clientesRodados.loc[linhaConta, "STATUS"] = 'SEM NOTA'
+                clientesRodados.loc[linhaConta, "ULT. ATUALIZAÇÃO"] = dataAtual
+
+            clientesRodados.to_excel('Bases/Clientes Rodados.xlsx', index=False)
         else:
             print('----------------')
             print(f'Ocorreu um erro ao solicitar as notas do {nomeCliente} - {contaCliente} - Response: {response}')
 
-            logErros = pd.read_excel('logErros.xlsx', dtype={'CONTA': str})
+            logErros = pd.read_excel('Bases/logErros.xlsx', dtype={'CONTA': str})
 
             numLinLogErros = logErros.shape[0]
     
@@ -170,4 +228,28 @@ def listarOrdens(cliente, tokenJWT):
             logErros.loc[linLogErros, "ERRO"] = response.status_code
             logErros.loc[linLogErros, "HORA"] = dataAtual
 
-            logErros.to_excel('logErros.xlsx', index=False)
+            logErros.to_excel(f'Bases/logErros - {dataAtual}.xlsx', index=False)
+
+                        # Atualiza a base de Clientes Rodados
+            clientesRodados = pd.read_excel('Bases/Clientes Rodados.xlsx', dtype={'CONTA': str})
+
+            numLinhas = clientesRodados.shape[0]
+
+            if numLinhas > 0:
+                lin = numLinhas + 1
+            else:
+                lin = 1
+
+            clienteExiste = clientesRodados.loc[clientesRodados['CONTA'] == contaCliente]
+
+            if clienteExiste.empty:
+                clientesRodados.loc[lin, "NOME"] = nomeCliente
+                clientesRodados.loc[lin, "CONTA"] = contaCliente
+                clientesRodados.loc[lin, "STATUS"] = 'ERRO'
+                clientesRodados.loc[lin, "ULT. ATUALIZAÇÃO"] = dataAtual
+            else:
+                linhaConta = clienteExiste.index[0]
+                clientesRodados.loc[linhaConta, "STATUS"] = 'ERRO'
+                clientesRodados.loc[linhaConta, "ULT. ATUALIZAÇÃO"] = dataAtual
+
+            clientesRodados.to_excel('Bases/Clientes Rodados.xlsx', index=False)
